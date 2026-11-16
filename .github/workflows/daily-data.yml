@@ -1,0 +1,82 @@
+name: daily-data
+
+on:
+  schedule:
+    - cron: "43 14 * * *"   # 台北 22:43；投信投顧公會 nav.csv 約 21:00 更新
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: daily-data
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TZ: Asia/Taipei
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Restore curated data from release
+        run: |
+          mkdir -p data/curated
+          gh release download data-latest -p '*.parquet' -D data/curated || echo "no previous data"
+
+      - name: Fetch (sequential, rate-limited)
+        id: fetch
+        continue-on-error: true
+        run: python -m fundstar fetch
+
+      - name: Build curated tables
+        run: python -m fundstar build
+
+      - name: Upload raw archive (monthly release)
+        run: |
+          TAG="raw-$(date +%Y-%m)"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            --title "$TAG 原始檔" \
+            --notes "每日原始檔備份。來源：臺灣集中保管結算所、金融監督管理委員會證券期貨局。授權：政府資料開放授權條款-第1版 https://data.gov.tw/license"
+          mkdir -p /tmp/raw
+          find data/raw -name '*.gz' | while read -r f; do
+            n="$(echo "${f#data/raw/}" | tr '/' '_')"
+            cp "$f" "/tmp/raw/$n"
+          done
+          gh release upload "$TAG" /tmp/raw/* --clobber
+
+      - name: Upload curated tables
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest \
+            --title "最新整理資料" \
+            --notes "每日更新的整理資料（Parquet）。授權：政府資料開放授權條款-第1版 https://data.gov.tw/license"
+          gh release upload data-latest data/curated/*.parquet --clobber
+
+      - name: Write and commit STATUS.json (keeps the repo active)
+        run: |
+          python -m fundstar status
+          cp data/STATUS.json STATUS.json
+          git config user.name "fundstar-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add STATUS.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: $(date +%F)"
+            git push
+          fi
+
+      - name: Fail the run if any source failed
+        if: steps.fetch.outcome == 'failure'
+        run: |
+          echo "至少一個來源抓取失敗，請看 Fetch 步驟的輸出"
+          exit 1
