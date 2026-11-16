@@ -33,13 +33,25 @@
   function esc(s) {
     return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   }
-  function fill(sel, idx, label) {
-    const counts = {};
-    funds.forEach((f) => { if (f[idx]) counts[f[idx]] = (counts[f[idx]] || 0) + 1; });
-    Object.keys(counts).sort().forEach((k) => {
-      const o = document.createElement("option");
-      o.value = k; o.textContent = `${label ? label(k) : k}（${counts[k]}）`;
-      sel.appendChild(o);
+  // 篩選選單：數字依「其他已選條件」即時計算，0 筆的選項不顯示（目前選中的除外）
+  const FACETS = [["f-type", F.type, "type"], ["f-region", F.region, "region"], ["f-risk", F.risk, "risk"],
+    ["f-cur", F.cur, "cur"], ["f-co", F.co, "co"]];
+  function facets() {
+    const c = filters();
+    FACETS.forEach(([selId, idx, key]) => {
+      const sel = $(selId), cur = sel.value, others = { ...c, [key]: "" };
+      const counts = {};
+      funds.forEach((f) => { if (f[idx] && pass(f, others)) counts[f[idx]] = (counts[f[idx]] || 0) + 1; });
+      if (cur && !counts[cur]) counts[cur] = 0;
+      const first = sel.options[0];
+      sel.innerHTML = "";
+      sel.appendChild(first);
+      Object.keys(counts).sort().forEach((k) => {
+        const o = document.createElement("option");
+        o.value = k; o.textContent = `${k}（${counts[k]}）`;
+        sel.appendChild(o);
+      });
+      sel.value = cur;
     });
   }
   function filters() {
@@ -52,6 +64,7 @@
       (!c.cur || f[F.cur] === c.cur) && (c.div === "" || String(f[F.div]) === c.div) && (!c.co || f[F.co] === c.co);
   }
   function render() {
+    facets();
     const q = $("q").value.trim();
     const qn = norm(q), tokens = q.split(/\s+/).map(norm).filter(Boolean);
     const c = filters();
@@ -106,8 +119,6 @@
   fetch("data/index.json").then((r) => r.json()).then((d) => {
     funds = d.funds;
     prepared = funds.map((f) => { const n = norm(f[F.name]); return { n, g: grams(n), code: norm(f[F.code]) }; });
-    fill($("f-type"), F.type); fill($("f-region"), F.region); fill($("f-risk"), F.risk);
-    fill($("f-cur"), F.cur); fill($("f-co"), F.co);
     const params = new URLSearchParams(location.search);
     if (params.get("q")) $("q").value = params.get("q");
     render(); tray();

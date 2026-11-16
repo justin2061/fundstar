@@ -1,0 +1,21 @@
+<h1>基金費用試算</h1>
+<p class="sub">輸入金額、年數和費率，看費用累積吃掉多少錢。費率請查你那檔基金的公開說明書或投資人須知，下面的預設值只是範例。</p>
+<form id="fee" class="fee-form" onsubmit="return false">
+  <label>投入金額（元）<input id="amount" type="number" min="1000" step="1000" value="100000" inputmode="numeric"></label>
+  <label>持有年數<input id="years" type="number" min="1" max="50" step="1" value="10" inputmode="numeric"></label>
+  <label>申購手續費（%）<input id="front" type="number" min="0" max="10" step="0.01" value="1.5" inputmode="decimal"></label>
+  <label>經理費（每年 %）<input id="mgmt" type="number" min="0" max="10" step="0.01" value="1.5" inputmode="decimal"></label>
+  <label>保管費（每年 %）<input id="cust" type="number" min="0" max="5" step="0.01" value="0.15" inputmode="decimal"></label>
+  <label>假設每年報酬（%）<input id="ret" type="number" min="-50" max="50" step="0.1" value="0" inputmode="decimal">
+    <span class="why">由你自己假設，不是預測。設 0 可以只看費用本身。</span></label>
+  <label class="inline"><input id="feeIn" type="checkbox"> 手續費從投入金額裡扣（不勾＝另外支付）</label>
+</form>
+<div id="feeout" aria-live="polite"></div>
+<details class="guide"><summary>怎麼看這個試算</summary>
+<ul>
+<li><b>申購手續費</b>：買進時付一次。</li>
+<li><b>經理費、保管費</b>：每天從基金資產裡扣，你不會收到帳單；基金公布的淨值和報酬，已經是扣完這些費用後的結果。</li>
+<li><b>少賺的錢</b>：除了直接付掉的費用，被扣掉的錢也不能繼續滾利息，所以實際少賺的會比直接費用多。</li>
+<li>本試算用固定報酬率計算，實際基金每年漲跌不同，費率也可能調整；另有贖回費、轉換費等未列入。</li>
+</ul></details>
+<script src="assets/fees.js"></script>
