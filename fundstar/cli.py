@@ -123,6 +123,13 @@ def cmd_status(a) -> int:
     return 0
 
 
+def cmd_site(a) -> int:
+    from . import site
+    meta = site.build_site(a.root / "curated", a.out)
+    print(json.dumps(meta, ensure_ascii=False, indent=1))
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="fundstar")
     p.add_argument("--root", type=pathlib.Path, default=pathlib.Path("data"))
@@ -132,5 +139,7 @@ def main(argv=None) -> int:
     sub.add_parser("rebuild").set_defaults(fn=cmd_rebuild)
     v = sub.add_parser("validate"); v.add_argument("official"); v.set_defaults(fn=cmd_validate)
     sub.add_parser("status").set_defaults(fn=cmd_status)
+    st = sub.add_parser("site"); st.add_argument("--out", type=pathlib.Path, default=pathlib.Path("_site"))
+    st.set_defaults(fn=cmd_site)
     a = p.parse_args(argv)
     return a.fn(a)

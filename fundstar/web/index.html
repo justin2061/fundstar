@@ -1,0 +1,19 @@
+<h1>搜尋基金</h1>
+<p class="sub">輸入基金名稱或簡稱，打錯字也找得到。勾選 2～4 檔可以並排比較。</p>
+<div class="search"><input id="q" type="search" placeholder="例如：安聯收益成長、紐約梅隆美國股票、台灣高股息" autocomplete="off" aria-label="基金名稱"></div>
+<div class="filters">
+  <select id="f-market" aria-label="境內或境外"><option value="">境內＋境外</option><option value="domestic">境內基金</option><option value="offshore">境外基金</option></select>
+  <select id="f-type" aria-label="類型"><option value="">所有類型</option></select>
+  <select id="f-region" aria-label="投資區域"><option value="">所有區域</option></select>
+  <select id="f-risk" aria-label="風險等級"><option value="">所有風險等級</option></select>
+  <select id="f-cur" aria-label="計價幣別"><option value="">所有幣別</option></select>
+  <select id="f-div" aria-label="配息"><option value="">配息不拘</option><option value="1">有配息</option><option value="0">沒有配息標示</option></select>
+  <select id="f-co" aria-label="投信或總代理"><option value="">所有投信／總代理</option></select>
+</div>
+<details class="guide"><summary>怎麼看搜尋結果</summary>
+<p>每一列是一個「級別」：同一檔基金常分成不同幣別、配息或累積等級別，淨值與報酬都不一樣。藍色標籤是計價幣別；
+黃色「名稱相近」標籤表示有其他基金名稱很像但可能是不同基金，請確認全名。類型與區域若顯示空白，代表開放資料沒有提供。</p></details>
+<p class="count" id="count">載入中…</p>
+<div id="results"></div>
+<div class="tray" id="tray"><span id="tray-text"></span><a class="btn primary" id="tray-go" href="compare.html">並排比較</a><button class="btn" id="tray-clear" type="button">清除</button></div>
+<script src="assets/search.js"></script>

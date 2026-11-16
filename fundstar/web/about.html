@@ -1,0 +1,25 @@
+<h1>資料來源與使用說明</h1>
+<h2>這個網站做什麼、不做什麼</h2>
+<ul>
+<li>把政府開放資料裡的基金淨值、配息、基本資料整理成看得懂的數字與說明。</li>
+<li><b>不提供投資建議</b>：不推薦、不排名、不評論好壞，也不說該買或該賣。</li>
+<li>不收費、不放廣告、不導購，也不蒐集個人資料。比較清單只存在你自己的瀏覽器。</li>
+</ul>
+<h2>資料來源</h2>
+<table class="tbl"><thead><tr><th>資料</th><th>提供者</th><th>更新</th></tr></thead><tbody>
+<tr><td><a href="https://data.gov.tw/dataset/11109">境內基金每日淨值</a></td><td>金融監督管理委員會證券期貨局</td><td>每日</td></tr>
+<tr><td><a href="https://data.gov.tw/dataset/11639">境外基金基本資料</a></td><td>臺灣集中保管結算所</td><td>每日</td></tr>
+<tr><td><a href="https://data.gov.tw/dataset/11641">境外基金淨值</a></td><td>臺灣集中保管結算所</td><td>每日</td></tr>
+<tr><td><a href="https://data.gov.tw/dataset/11642">境外基金配息資訊</a></td><td>臺灣集中保管結算所</td><td>每日</td></tr>
+</tbody></table>
+<p class="meta">此開放資料依政府資料開放授權條款（Open Government Data License）進行公眾釋出，使用者於遵守本條款各項規定之前提下，得利用之。
+政府資料開放授權條款：<a href="https://data.gov.tw/license">https://data.gov.tw/license</a></p>
+<h2>為什麼常看到「資料不足」</h2>
+<ul>
+<li><b>歷史太短</b>：官方開放資料只提供最近幾天的淨值，本站從 2026-11-16 起每天自己累積。近 1、3、5 年報酬要等資料累積夠長才算得出來。</li>
+<li><b>沒有開放來源</b>：持股、產業與國家配置、費用率、境內基金的配息與風險等級，目前沒有開放授權的資料來源，本站不用猜測或估計的數字填補。</li>
+<li><b>境內基金類型</b>：開放資料沒有類型欄位，本站依基金名稱粗分（例如名稱有「債」歸為債券型），並在頁面上註明。</li>
+</ul>
+<h2>計算方式</h2>
+<p>含息報酬：配息在除息日以當天淨值再投資。年化波動：每日報酬的標準差乘以 √252。最大回撤：資料期間內，從前一個最高點到之後最低點的跌幅。
+程式碼公開在 <a href="https://github.com/justin2061/fundstar">GitHub</a>。</p>
