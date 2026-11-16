@@ -37,6 +37,7 @@ python -m fundstar fetch      # 循序抓取所有來源，原始檔存 data/raw
 python -m fundstar build      # 把當天原始檔併入 data/curated/*.parquet
 python -m fundstar rebuild    # 從所有原始檔重建
 python -m fundstar status     # 寫出 data/STATUS.json
+python -m fundstar site --out _site   # 產生靜態網站（搜尋、白話健檢、比較）
 python -m fundstar validate validation/official_returns.csv   # 與官方區間報酬比對（容許 0.05 個百分點）
 ```
 
@@ -50,3 +51,14 @@ python -m fundstar validate validation/official_returns.csv   # 與官方區間�
 - 原始檔：每月一個 Release（`raw-YYYY-MM`），每日一個檔案。
 - 整理後資料：Release `data-latest` 的 Parquet，每日覆蓋。
 - repo 只提交 `STATUS.json`（筆數、日期範圍），避免 git 歷史膨脹，也讓排程維持活動狀態。
+
+## 網站（M2）
+
+`python -m fundstar site` 產生純靜態網站，由 GitHub Pages 免費託管：
+
+- `index.html` 搜尋：口語簡稱與錯字容忍（子字串＋雙字重疊），篩選境內外、類型、區域、風險、幣別、配息、投信／總代理。
+- `f/<id>.html` 白話健檢：每個數字附白話說明、資料日期與來源；資料不夠就顯示「資料不足」與原因。
+- `compare.html` 比較 2～4 個級別：幣別或避險不同時提醒；漲跌相關係數至少需要 60 筆共同報酬。
+- 同一基金的級別分組：境內用基金統編前 8 碼；境外用整檔基金規模＋管理機構，缺基本資料時用名稱。
+- 名稱相近提醒：去掉級別與英數字後的本名互相包含、但屬於不同基金時標示。
+- 境內基金類型依名稱粗分並註明；境內配息型級別沒有開放配息資料，含息報酬顯示「資料不足」。

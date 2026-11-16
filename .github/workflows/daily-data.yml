@@ -75,8 +75,29 @@ jobs:
             git push
           fi
 
+      - name: Build static site
+        run: python -m fundstar site --out _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
       - name: Fail the run if any source failed
         if: steps.fetch.outcome == 'failure'
         run: |
           echo "至少一個來源抓取失敗，請看 Fetch 步驟的輸出"
           exit 1
+
+  deploy:
+    needs: run
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
