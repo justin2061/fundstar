@@ -76,6 +76,8 @@ def test_build_site(tmp_path):
     sm = (out / "sitemap.xml").read_text(encoding="utf-8")
     assert sm.count("<url>") == 6 + 5 and "f/o-A1.html" in sm
     assert '<link rel="canonical" href="https://justin2061.github.io/fundstar/f/o-A1.html">' in a1
+    idx_html = (out / "index.html").read_text(encoding="utf-8")
+    assert 'name="google-site-verification" content="-coTQv5x28CYw41QMGWoPQN2ifR6Fz_VqIQI1XwsEXo"' in idx_html
     for p in ("index.html", "compare.html", "dividends.html", "fees.html", "glossary.html", "about.html",
               "assets/search.js", "assets/fees.js", "assets/dividends.js", ".nojekyll"):
         assert (out / p).exists()
