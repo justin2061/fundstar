@@ -68,7 +68,16 @@ def test_build_site(tmp_path):
     assert "名稱相近" in d3 and "d-D2.html" in d3                # 穩定月收益 vs 全球穩定月收益
     j = json.loads((out / "data/f/o-A1.json").read_text(encoding="utf-8"))
     assert j["div"]["n_principal"] == 1 and j["tr"] is not None
-    for p in ("index.html", "compare.html", "glossary.html", "about.html", "assets/search.js", ".nojekyll"):
+    dv = json.loads((out / "data/dividends.json").read_text(encoding="utf-8"))
+    assert dv["stats"]["records"] == 1 and dv["stats"]["principal_any"] == 1
+    assert dv["rows"][0][0] == "o-A1" and dv["rows"][0][6] == 40.0
+    dh = (out / "dividends.html").read_text(encoding="utf-8")
+    assert "1 次（100.0%）有部分來自本金" in dh
+    sm = (out / "sitemap.xml").read_text(encoding="utf-8")
+    assert sm.count("<url>") == 6 + 5 and "f/o-A1.html" in sm
+    assert '<link rel="canonical" href="https://justin2061.github.io/fundstar/f/o-A1.html">' in a1
+    for p in ("index.html", "compare.html", "dividends.html", "fees.html", "glossary.html", "about.html",
+              "assets/search.js", "assets/fees.js", "assets/dividends.js", ".nojekyll"):
         assert (out / p).exists()
 
 

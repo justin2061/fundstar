@@ -10,6 +10,7 @@ import datetime as dt
 import html
 import json
 import math
+import os
 import pathlib
 import shutil
 from collections import defaultdict
@@ -17,6 +18,7 @@ from collections import defaultdict
 from . import returns, sources, textutil
 
 MIN_CHART_POINTS = 20
+SITE_URL = os.environ.get("FUNDSTAR_SITE_URL", "https://justin2061.github.io/fundstar/")
 ASSET_DIR = pathlib.Path(__file__).parent / "web"
 
 DISCLAIMER = (
@@ -261,17 +263,26 @@ def svg_chart(points: list[tuple[str, float]], label: str) -> str:
 
 # ---------------------------------------------------------------- 頁面
 
-def page(title: str, body: str, depth: int = 0, desc: str = "") -> str:
+def page(title: str, body: str, depth: int = 0, desc: str = "", path: str = "",
+         full_title: str | None = None) -> str:
     up = "../" * depth
+    t = full_title or f"{title}｜基金白話通"
+    d = desc or DISCLAIMER
+    url = SITE_URL + path
     return f"""<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(title)}｜基金白話通</title>
-<meta name="description" content="{e(desc or DISCLAIMER)}">
+<title>{e(t)}</title>
+<meta name="description" content="{e(d)}">
+<link rel="canonical" href="{e(url)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="基金白話通">
+<meta property="og:title" content="{e(t)}"><meta property="og:description" content="{e(d)}">
+<meta property="og:url" content="{e(url)}"><meta property="og:locale" content="zh_TW">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="{up}assets/style.css"></head>
 <body><header class="top"><a class="brand" href="{up}index.html">基金白話通</a>
 <nav><a href="{up}index.html">搜尋</a><a href="{up}compare.html">比較</a>
+<a href="{up}dividends.html">配息真相</a><a href="{up}fees.html">費用試算</a>
 <a href="{up}glossary.html">名詞小辭典</a><a href="{up}about.html">資料來源</a></nav></header>
 <main>{body}</main>
 <footer class="disclaimer"><p>{e(DISCLAIMER)}</p></footer></body></html>
@@ -393,8 +404,15 @@ def fund_page(r: dict, by_id: dict) -> str:
                         for s in r["lookalikes"] if s in by_id)
         parts.append('<section class="warn"><h2>注意：名稱相近、但可能是不同基金</h2>'
                      f"<p>下面這些基金名稱和本基金很像，投資內容可能不同，查詢時請確認全名。</p><ul>{items}</ul></section>")
-    desc = f"{r['name']}：最新淨值 {num(r['latest_nav'])}（{r['latest_date']}）、配息、風險等級的白話說明。"
-    return page(r["name"] or r["class_id"], "".join(parts), depth=1, desc=desc)
+    bits = [f"最新淨值 {num(r['latest_nav'])} {r['currency']}（{r['latest_date']}）"]
+    if r["risk"]:
+        bits.append(f"風險等級 {r['risk']}")
+    if r["div"] and r["div"]["n_with_source"]:
+        bits.append(f"近期 {r['div']['n_with_source']} 次配息中 {r['div']['n_principal']} 次含本金")
+    desc = f"{r['name']}：" + "、".join(bits) + "。用白話說明這檔基金的級別、配息來源與風險。"
+    name = r["name"] or r["class_id"]
+    return page(name, "".join(parts), depth=1, desc=desc, path=f"f/{r['id']}.html",
+                full_title=f"{name}｜淨值、配息與風險白話說明｜基金白話通")
 
 
 # ---------------------------------------------------------------- 匯出
@@ -438,11 +456,25 @@ def build_site(curated: pathlib.Path, out: pathlib.Path, generated_at: str | Non
     (out / "f").mkdir(parents=True)
     (out / "data" / "f").mkdir(parents=True)
     shutil.copytree(ASSET_DIR / "assets", out / "assets")
-    for name in ("index.html", "compare.html", "glossary.html", "about.html"):
+    statics = {
+        "index.html": ("搜尋基金", "用白話看懂台灣可以買到的境內外基金：淨值、配息來源、風險等級與級別差異。"),
+        "compare.html": ("基金比較", "並排比較 2～4 個基金級別的幣別、風險、含息報酬與配息來源。"),
+        "fees.html": ("基金費用試算", "輸入金額、年數與費率，試算申購手續費、經理費、保管費累積吃掉多少錢。"),
+        "glossary.html": ("名詞小辭典", "淨值、含息報酬、配息來源、年化波動、最大回撤、RR 等級、級別、避險的白話解釋。"),
+        "about.html": ("資料來源與使用說明", "基金白話通的資料來源、授權、計算方式，以及為什麼會顯示資料不足。"),
+    }
+    for name, (title, desc) in statics.items():
         body = (ASSET_DIR / name).read_text(encoding="utf-8")
-        title = {"index.html": "搜尋基金", "compare.html": "基金比較", "glossary.html": "名詞小辭典",
-                 "about.html": "資料來源與使用說明"}[name]
-        (out / name).write_text(page(title, body), encoding="utf-8")
+        path = "" if name == "index.html" else name
+        (out / name).write_text(page(title, body, desc=desc, path=path), encoding="utf-8")
+    stats, drows = dividend_stats(recs, data)
+    (out / "dividends.html").write_text(page(
+        "配息真相", dividends_body(stats), path="dividends.html",
+        desc=(f"有標示來源的 {stats['with_source']:,} 次境外基金配息中，{stats['principal_any']:,} 次有部分來自本金。"
+              "查詢各基金配息的本金占比。")), encoding="utf-8")
+    (out / "data" / "dividends.json").write_text(
+        json.dumps({"stats": stats, "rows": drows}, ensure_ascii=False, separators=(",", ":"),
+                   default=_json_default), encoding="utf-8")
 
     for r in recs:
         (out / "f" / f"{r['id']}.html").write_text(fund_page(r, by_id), encoding="utf-8")
@@ -459,8 +491,81 @@ def build_site(curated: pathlib.Path, out: pathlib.Path, generated_at: str | Non
     (out / "data" / "index.json").write_text(
         json.dumps({"meta": meta, "funds": [index_entry(r) for r in recs]}, ensure_ascii=False,
                    separators=(",", ":"), default=_json_default), encoding="utf-8")
+    meta["sitemap_urls"] = write_sitemap(out, recs, ["", "compare.html", "dividends.html", "fees.html",
+                                                     "glossary.html", "about.html"],
+                                         dt.datetime.now(sources.TZ_TAIPEI).date().isoformat())
+    meta["dividend_stats"] = {k: stats[k] for k in ("records", "with_source", "principal_any")}
     (out / ".nojekyll").write_text("")
     return meta
+
+
+# ---------------------------------------------------------------- 配息真相、sitemap
+
+def dividend_stats(recs: list[dict], data: dict) -> tuple[dict, list[list]]:
+    allrows = [d for ds in data["divs"].values() for d in ds]
+    withp = [d for d in allrows if d["pct_principal"] is not None]
+    buckets = [("0%（完全沒有用到本金）", lambda x: x == 0), ("1%～25%", lambda x: 0 < x <= 25),
+               ("26%～50%", lambda x: 25 < x <= 50), ("51%～75%", lambda x: 50 < x <= 75),
+               ("76%～99%", lambda x: 75 < x < 100), ("100%（全部來自本金）", lambda x: x >= 100)]
+    stats = {
+        "records": len(allrows), "with_source": len(withp), "no_source": len(allrows) - len(withp),
+        "principal_any": sum(1 for d in withp if d["pct_principal"] > 0),
+        "buckets": [[label, sum(1 for d in withp if f(d["pct_principal"]))] for label, f in buckets],
+        "classes": sum(1 for r in recs if r["div"]),
+        "classes_any_principal": sum(1 for r in recs if r["div"] and r["div"]["n_principal"]),
+        "first_ex": min((d["ex_date"] for d in allrows), default=None),
+        "last_ex": max((d["ex_date"] for d in allrows), default=None),
+    }
+    rows = []
+    for r in recs:
+        d = r["div"]
+        if not d:
+            continue
+        last = d["recent"][0]
+        rows.append([r["id"], r["name"], r["currency"], d["n"], d["n_with_source"], d["n_principal"],
+                     None if d["avg_principal"] is None else round(d["avg_principal"], 1),
+                     None if d["sum_pct_of_nav"] is None else round(d["sum_pct_of_nav"] * 100, 2),
+                     d["last_ex"], last["pct_principal"], r.get("company") or ""])
+    return stats, rows
+
+
+def dividends_body(stats: dict) -> str:
+    s = stats
+    share = (s["principal_any"] / s["with_source"]) if s["with_source"] else None
+    bucket_rows = "".join(f"<tr><td>{e(lbl)}</td><td>{n:,}</td>"
+                          f"<td>{(n / s['with_source'] * 100 if s['with_source'] else 0):.1f}%</td></tr>"
+                          for lbl, n in s["buckets"])
+    return f"""<h1>配息真相</h1>
+<p class="sub">配息不一定是賺來的錢。這一頁用官方公布的「配息組成」，看境外基金的配息有多少來自本金。</p>
+<section><h2>一句話結論</h2>
+<p class="big">有標示來源的 {s['with_source']:,} 次配息中，<b>{s['principal_any']:,} 次（{pct(share, 1, False) or '資料不足'}）有部分來自本金</b>。</p>
+<p class="meta">資料範圍：境外基金除息日 {e(s['first_ex'] or '')} 到 {e(s['last_ex'] or '')}，共 {s['records']:,} 次配息、{s['classes']:,} 個級別；
+其中 {s['no_source']:,} 次官方沒有標示來源（資料不足）。來源：{SRC_OFF}</p></section>
+<section><h2>「來自本金」是什麼意思</h2>
+<p>基金配息的錢可能有兩種來源：基金真的賺到的收益，或是直接從大家投入的本金拿出來發。後者等於把你自己的錢還給你，淨值也會跟著下降。</p>
+<div class="guide"><p><b>假設的例子</b>（不是真實基金）：你用 100 萬買進，每年配息 8%，拿到 8 萬。
+但同一年淨值從 10 元跌到 9 元，帳上剩 90 萬。加起來是 98 萬，<b>含息報酬是 -2%</b>。
+配息率 8% 看起來很高，但其實虧錢。所以要看「含息報酬」，不能只看配息率。</p></div></section>
+<section><h2>配息中本金占比的分布</h2>
+<table class="tbl"><thead><tr><th>本金占該次配息</th><th>次數</th><th>占有標示來源的比例</th></tr></thead>
+<tbody>{bucket_rows}</tbody></table></section>
+<section><h2>查詢各級別</h2>
+<p class="explain">輸入基金名稱，查看每個級別在資料期間內的配息次數、含本金的次數與平均本金占比。表格可以點欄位名稱排序。</p>
+<div class="search"><input id="dq" type="search" placeholder="輸入基金名稱，例如：安聯收益成長" aria-label="基金名稱"></div>
+<p class="count" id="dcount">載入中…</p>
+<div class="cmp"><table class="tbl" id="dtable"></table></div>
+<p class="meta">平均本金占比只計算有標示來源的配息。「配息合計占淨值」＝資料期間內每單位配息加總 ÷ 最新淨值，不是年化配息率。</p></section>
+<script src="assets/dividends.js"></script>"""
+
+
+def write_sitemap(out: pathlib.Path, recs: list[dict], static_pages: list[str], today: str) -> int:
+    urls = [(p, today) for p in static_pages]
+    urls += [(f"f/{r['id']}.html", r["latest_date"]) for r in recs]
+    body = "".join(f"<url><loc>{e(SITE_URL + p)}</loc><lastmod>{d}</lastmod></url>" for p, d in urls)
+    (out / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>\n', encoding="utf-8")
+    return len(urls)
 
 
 def _json_default(o):
