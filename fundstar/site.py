@@ -18,6 +18,7 @@ from collections import defaultdict
 from . import returns, sources, textutil
 
 MIN_CHART_POINTS = 20
+GSC_VERIFICATION = "-coTQv5x28CYw41QMGWoPQN2ifR6Fz_VqIQI1XwsEXo"
 SITE_URL = os.environ.get("FUNDSTAR_SITE_URL", "https://justin2061.github.io/fundstar/")
 ASSET_DIR = pathlib.Path(__file__).parent / "web"
 
@@ -275,6 +276,7 @@ def page(title: str, body: str, depth: int = 0, desc: str = "", path: str = "",
 <title>{e(t)}</title>
 <meta name="description" content="{e(d)}">
 <link rel="canonical" href="{e(url)}">
+<meta name="google-site-verification" content="{GSC_VERIFICATION}">
 <meta property="og:type" content="website"><meta property="og:site_name" content="基金白話通">
 <meta property="og:title" content="{e(t)}"><meta property="og:description" content="{e(d)}">
 <meta property="og:url" content="{e(url)}"><meta property="og:locale" content="zh_TW">
