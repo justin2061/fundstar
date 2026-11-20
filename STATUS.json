@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-20T10:24:11+08:00",
+ "generated_at": "2026-11-20T22:48:29+08:00",
  "license": "政府資料開放授權條款-第1版 https://data.gov.tw/license",
  "tables": {
   "nav_offshore": {
@@ -9,10 +9,10 @@
    "max": "2026-11-17"
   },
   "nav_domestic": {
-   "rows": 17266,
+   "rows": 21582,
    "classes": 4318,
    "min": "2026-11-13",
-   "max": "2026-11-19"
+   "max": "2026-11-20"
   },
   "div_offshore": {
    "rows": 9573,
