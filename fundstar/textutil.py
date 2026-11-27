@@ -76,6 +76,39 @@ def domestic_type_from_name(name: str | None) -> str | None:
     return None
 
 
+# 投信投顧公會「基金類型別」代碼前綴 → 與 domestic_type_from_name 相同的用語
+DOMESTIC_TYPE_PREFIX = [
+    ("AH", "ETF"), ("AL", "ETF"), ("AK", "ETF連結基金"), ("AE", "組合型"), ("AD", "貨幣市場型"),
+    ("AJ", "多重資產型"), ("AB", "平衡型"), ("AC", "債券型"), ("AA", "股票型"), ("AI", "指數型"),
+    ("AG", "不動產證券化型"), ("AF", "保本型"),
+]
+_TYPE_CODE = re.compile(r"^\(?([A-Z]{2}\d*)\)?\s*(.*)$")
+
+
+def domestic_type_from_category(category: str | None) -> tuple[str | None, str | None]:
+    """'(AC23) 非投資等級債券型' -> ('債券型', '非投資等級債券型')；無法對應回傳 (None, 原文)。"""
+    if not category:
+        return None, None
+    m = _TYPE_CODE.match(category.strip())
+    if not m:
+        return None, category
+    code, label = m.groups()
+    for prefix, t in DOMESTIC_TYPE_PREFIX:
+        if code.startswith(prefix):
+            return t, label or category
+    return None, label or category
+
+
+NO_DIST = ("不予分配", "不分配", "不配息")
+
+
+def policy_distributes(policy: str | None) -> bool | None:
+    """依「基金配息規定」判斷是否配息；沒有資料回傳 None。"""
+    if not policy:
+        return None
+    return not any(w in policy for w in NO_DIST)
+
+
 def offshore_type(category: str | None) -> str | None:
     if not category:
         return None

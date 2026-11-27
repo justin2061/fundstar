@@ -83,6 +83,49 @@ def test_build_site(tmp_path):
         assert (out / p).exists()
 
 
+def test_domestic_type_and_policy():
+    assert textutil.domestic_type_from_category("(AC23) 非投資等級債券型") == ("債券型", "非投資等級債券型")
+    assert textutil.domestic_type_from_category("(AH21) 跨國投資指數股票型_股票型")[0] == "ETF"
+    assert textutil.domestic_type_from_category("(ZZ9) 未知") == (None, "未知")
+    assert textutil.policy_distributes("月配息") is True
+    assert textutil.policy_distributes("本類型收入併入基金資產不予分配") is False
+    assert textutil.policy_distributes(None) is None
+
+
+def test_domestic_open_data(tmp_path):
+    """境內基本資料、配息、費用接上之後：類型改用基本資料、配息級別含息報酬只算到配息資料涵蓋日。"""
+    cur = _curated(tmp_path)
+    days = [f"2026-10-{d:02d}" for d in range(1, 31)] + [f"2026-11-{d:02d}" for d in range(1, 14)]
+    store.merge(cur, "nav_domestic", [
+        {"market": "domestic", "class_id": "D1B", "date": d, "nav": 11.0 + i * 0.01, "currency": "TWD",
+         "name": "測試多重資產基金(新台幣)-配息型", "fund_code": "X", "company": "測試投信", "type_code": "AJ2",
+         "ticker": "T1"} for i, d in enumerate(days)])
+    store.merge(cur, "div_domestic", [{"market": "domestic", "class_id": "D1B", "ex_date": "2026-10-15",
+                                       "record_date": None, "pay_date": None, "dividend": 0.05,
+                                       "currency": "TWD", "type_code": "AJ2", "name": "x"}])
+    store.merge(cur, "funds_domestic", [{"class_id": "D1B", "month": "2026-10", "name": "x", "company": "測試投信",
+                                         "inception": "2020-01-01", "aum_date": "2026-10-31", "aum_currency": "台幣",
+                                         "class_aum": 1e8, "fund_aum": 5e8, "category": "(AJ2) 跨國投資多重資產型",
+                                         "region": "全球", "div_policy": "月配息", "isin": "TW1", "currency": "TWD"}])
+    store.merge(cur, "fees_domestic", [{"fund_id": "D1B", "month": "2026-10", "name": "x", "company": "測試投信",
+                                        "type_code": "AJ2", "total_amount": 1.0, "total_pct": 0.17944,
+                                        "trade_pct": 0.01558, "tax_pct": 0.0, "mgmt_pct": 0.1274, "custody_pct": 0.01274,
+                                        "guarantee_pct": 0.0, "other_pct": 0.00356}])
+    out = tmp_path / "_site"
+    site.build_site(cur, out, generated_at="test")
+    d1 = (out / "f/d-D1B.html").read_text(encoding="utf-8")
+    assert "多重資產型" in d1 and "判斷依據：基本資料" in d1
+    assert "500 百萬 台幣" in d1 and "月配息" in d1
+    assert "2026-10 單月費用" in d1 and "0.179%" in d1 and "經理費 0.127%" in d1
+    assert "境內配息型級別沒有開放的配息資料" not in d1
+    assert "境內基金的開放資料沒有標示本金或收益組成" in d1
+    j = json.loads((out / "data/f/d-D1B.json").read_text(encoding="utf-8"))
+    assert j["tr_end"] == "2026-10-15" and j["tr"][-1][0] == "2026-10-15"   # 只算到配息資料涵蓋日
+    assert j["div"]["n"] == 1
+    dv = json.loads((out / "data/dividends.json").read_text(encoding="utf-8"))
+    assert dv["stats"]["records"] == 1 and all(r[0].startswith("o-") for r in dv["rows"])  # 配息真相只算境外
+
+
 def test_chart_needs_enough_points():
     assert "資料不足" in site.svg_chart([("2026-01-01", 1.0)] * 3, "x")
     assert "<svg" in site.svg_chart([(f"2026-01-{i:02d}", 1.0 + i) for i in range(1, 25)], "x")

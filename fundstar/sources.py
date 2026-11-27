@@ -49,6 +49,34 @@ SOURCES: dict[str, dict] = {
         "title": "證券投資信託基金每日淨值",
         "dataset": "https://data.gov.tw/dataset/11109",
     },
+    # 以下三個是投信投顧公會提供、由證期局上架的月資料（不定期更新，約每月中旬）
+    "fsc_domestic_basic": {
+        "url": "https://www.sitca.org.tw/MemberK0000/F/03/43476"
+               "%E6%8A%95%E4%BF%A1%E6%8A%95%E9%A1%A7%E5%85%AC%E6%9C%83%E5%A2%83%E5%85%A7%E5%9F%BA%E9%87%91"
+               "%E5%9F%BA%E6%9C%AC%E8%B3%87%E6%96%99.csv",
+        "ext": "csv",
+        "provider": "金融監督管理委員會證券期貨局",
+        "title": "投信投顧公會境內基金基本資料",
+        "dataset": "https://data.gov.tw/dataset/43476",
+    },
+    "fsc_domestic_div": {
+        "url": "https://www.sitca.org.tw/MemberK0000/F/03/160547"
+               "%E6%8A%95%E4%BF%A1%E6%8A%95%E9%A1%A7%E5%85%AC%E6%9C%83%E5%A2%83%E5%85%A7%E5%9F%BA%E9%87%91"
+               "%E9%85%8D%E6%81%AF%E8%B3%87%E6%96%99.csv",
+        "ext": "csv",
+        "provider": "金融監督管理委員會證券期貨局",
+        "title": "投信投顧公會境內基金配息資料",
+        "dataset": "https://data.gov.tw/dataset/160547",
+    },
+    "fsc_domestic_fee": {
+        "url": "https://www.sitca.org.tw/MemberK0000/F/03/46443"
+               "%E6%8A%95%E4%BF%A1%E6%8A%95%E9%A1%A7%E5%85%AC%E6%9C%83%E5%A2%83%E5%85%A7%E5%9F%BA%E9%87%91"
+               "%E5%90%84%E9%A0%85%E8%B2%BB%E7%94%A8%E8%B3%87%E6%96%99.csv",
+        "ext": "csv",
+        "provider": "金融監督管理委員會證券期貨局",
+        "title": "投信投顧公會境內基金各項費用資料",
+        "dataset": "https://data.gov.tw/dataset/46443",
+    },
 }
 
 _last_request = 0.0

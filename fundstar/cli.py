@@ -16,6 +16,9 @@ TABLE_OF = {
     "tdcc_offshore_nav": "nav_offshore",
     "tdcc_offshore_div": "div_offshore",
     "fsc_domestic_nav": "nav_domestic",
+    "fsc_domestic_basic": "funds_domestic",
+    "fsc_domestic_div": "div_domestic",
+    "fsc_domestic_fee": "fees_domestic",
 }
 TOLERANCE_PP = 0.05  # 與官方區間報酬的容許誤差（百分點）
 
@@ -63,7 +66,7 @@ def _series(con, market: str, class_id: str) -> returns.TRSeries:
     navs = con.execute(f"SELECT date::VARCHAR, nav FROM read_parquet(?) WHERE class_id = ?",
                        [market["nav"], class_id]).fetchall()
     divs = {}
-    if market.get("div"):
+    if market.get("div") and pathlib.Path(market["div"]).exists():
         divs = dict(con.execute("SELECT ex_date::VARCHAR, dividend FROM read_parquet(?) WHERE class_id = ?",
                                 [market["div"], class_id]).fetchall())
     return returns.total_return_index(navs, divs)
@@ -78,7 +81,7 @@ def cmd_validate(a) -> int:
     cur = a.root / "curated"
     markets = {
         "offshore": {"nav": str(cur / "nav_offshore.parquet"), "div": str(cur / "div_offshore.parquet")},
-        "domestic": {"nav": str(cur / "nav_domestic.parquet")},
+        "domestic": {"nav": str(cur / "nav_domestic.parquet"), "div": str(cur / "div_domestic.parquet")},
     }
     con = duckdb.connect()
     results, fails = [], 0
@@ -109,12 +112,14 @@ def cmd_status(a) -> int:
     status = {"generated_at": dt.datetime.now(sources.TZ_TAIPEI).isoformat(timespec="seconds"),
               "license": sources.LICENSE, "tables": {}}
     datecol = {"nav_offshore": "date", "nav_domestic": "date", "div_offshore": "ex_date",
-               "funds_offshore": "as_of"}
+               "funds_offshore": "as_of", "funds_domestic": "month", "div_domestic": "ex_date",
+               "fees_domestic": "month"}
     for t, c in datecol.items():
         p = cur / f"{t}.parquet"
+        idcol = "fund_id" if t == "fees_domestic" else "class_id"
         if p.exists():
             n, k, lo, hi = con.execute(
-                f"SELECT count(*), count(DISTINCT class_id), min({c})::VARCHAR, max({c})::VARCHAR "
+                f"SELECT count(*), count(DISTINCT {idcol}), min({c})::VARCHAR, max({c})::VARCHAR "
                 f"FROM read_parquet(?)", [str(p)]).fetchone()
             status["tables"][t] = {"rows": n, "classes": k, "min": lo, "max": hi}
     out = a.root / "STATUS.json"

@@ -11,6 +11,9 @@ TABLES = {
     "nav_domestic": ["class_id", "date"],
     "div_offshore": ["class_id", "ex_date"],
     "funds_offshore": ["class_id"],
+    "funds_domestic": ["class_id"],
+    "div_domestic": ["class_id", "ex_date"],
+    "fees_domestic": ["fund_id", "month"],
 }
 
 

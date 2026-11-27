@@ -66,13 +66,34 @@ def load(curated: pathlib.Path) -> dict:
         divs[f"o-{cid}"].append({"ex_date": ex, "dividend": amt, "currency": cur, "frequency": freq,
                                  "pct_income": inc, "pct_principal": pri})
 
+    for cid, ex, amt, cur in q(
+            "SELECT class_id, ex_date::VARCHAR, dividend, currency FROM {p} ORDER BY class_id, ex_date",
+            "div_domestic.parquet"):
+        divs[f"d-{cid}"].append({"ex_date": ex, "dividend": amt, "currency": cur, "frequency": None,
+                                 "pct_income": None, "pct_principal": None})
+    # 境內配息資料是月資料：涵蓋到哪一天（之後的除息還沒公布）
+    cover = q("SELECT max(ex_date)::VARCHAR FROM {p}", "div_domestic.parquet")
+    div_cover_dom = cover[0][0] if cover else None
+
     basic = {}
     cols = ["class_id", "isin", "name", "category", "region", "currency", "risk_level", "agent",
             "manager", "fund_aum_m", "fund_aum_currency", "fund_aum_date", "class_aum_m", "inception", "as_of"]
     for row in q(f"SELECT {', '.join(cols)} FROM {{p}}", "funds_offshore.parquet"):
         r = dict(zip(cols, row))
         basic[f"o-{r['class_id']}"] = r
-    return {"navs": navs, "meta": meta, "divs": divs, "basic": basic}
+    dcols = ["class_id", "month", "name", "company", "inception", "aum_date", "aum_currency", "class_aum",
+             "fund_aum", "category", "region", "div_policy", "isin", "currency"]
+    for row in q(f"SELECT {', '.join(dcols)} FROM {{p}}", "funds_domestic.parquet"):
+        r = dict(zip(dcols, row))
+        basic[f"d-{r['class_id']}"] = r
+    fees = {}
+    fcols = ["fund_id", "month", "total_pct", "mgmt_pct", "custody_pct", "trade_pct", "tax_pct",
+             "guarantee_pct", "other_pct"]
+    for row in q(f"SELECT {', '.join(fcols)} FROM {{p}} ORDER BY fund_id, month", "fees_domestic.parquet"):
+        r = dict(zip(fcols, row))
+        fees[r["fund_id"]] = r          # 依月份排序，留下最新一個月
+    return {"navs": navs, "meta": meta, "divs": divs, "basic": basic, "fees": fees,
+            "div_cover_dom": div_cover_dom}
 
 
 # ---------------------------------------------------------------- 計算
@@ -118,20 +139,43 @@ def build_record(key: str, data: dict) -> dict:
             "fund_aum_date": b.get("fund_aum_date"), "basic_as_of": b.get("as_of"),
         })
     else:
-        t = textutil.domestic_type_from_name(name)
+        t, detail = textutil.domestic_type_from_category(b.get("category"))
+        basis = "基本資料" if t else None
+        if not t:
+            t, basis = textutil.domestic_type_from_name(name), "依基金名稱判斷"
+            basis = basis if t else None
+        fee = data.get("fees", {}).get(m["class_id"][:8])
         rec.update({
-            "type": t, "type_detail": None, "type_basis": "依基金名稱判斷" if t else None,
-            "region": None, "region_detail": None, "region_filter": None, "risk": None,
-            "company": m.get("company"), "company_label": "投信",
+            "type": t, "type_detail": detail if basis == "基本資料" else None, "type_basis": basis,
+            "region": b.get("region"), "region_detail": b.get("region"), "region_filter": None, "risk": None,
+            "company": m.get("company") or b.get("company"), "company_label": "投信",
             "ticker": m.get("ticker"), "type_code": m.get("type_code"),
+            "inception": b.get("inception"), "div_policy": b.get("div_policy"), "basic_month": b.get("month"),
+            "fund_aum": b.get("fund_aum"), "class_aum": b.get("class_aum"),
+            "aum_currency": b.get("aum_currency"), "aum_date": b.get("aum_date"),
+            "fee": fee,
         })
 
-    # 含息報酬：境內配息型沒有開放的配息資料 → 資料不足
-    tr_ok = not (market == "domestic" and div_name)
-    series = returns.total_return_index(navs, {d["ex_date"]: d["dividend"] for d in divs}) if tr_ok else None
+    # 含息報酬。境內配息資料是月資料，只公布到 cover 那天；配息級別的含息報酬只算到該日，
+    # 避免漏掉還沒公布的除息。沒有任何境內配息資料時 → 資料不足。
+    navs_tr = navs
+    rec["tr_end"] = None
+    tr_ok = True
+    if market == "domestic":
+        distributes = div_name or bool(divs) or textutil.policy_distributes(b.get("div_policy")) is True
+        rec["distributes"] = distributes
+        if distributes:
+            cover = data.get("div_cover_dom")
+            if not cover:
+                tr_ok = False
+            elif cover < navs[-1][0]:
+                navs_tr = [x for x in navs if x[0] <= cover]
+                rec["tr_end"] = cover
     rec["tr_available"] = tr_ok
+    series = returns.total_return_index(navs_tr, {d["ex_date"]: d["dividend"] for d in divs}) \
+        if tr_ok and navs_tr else None
     rec["tr_warnings"] = series.warnings if series else []
-    end = rec["latest_date"]
+    end = series.dates[-1] if series and series.dates else rec["latest_date"]
     for y in (1, 3, 5):
         rec[f"ret_{y}y"] = returns.period_return(series, _years_ago(end, y), end) if series else None
     rec["vol"] = returns.annualized_volatility(series) if series else None
@@ -327,7 +371,7 @@ def fund_page(r: dict, by_id: dict) -> str:
             (f"判斷依據：{r['type_basis']}" + (f"（{r['type_detail']}）" if r.get("type_detail") else ""))
             if r["type"] else ""),
         row("投資區域", e(r["region_detail"] or r["region"]) if r["region"] else
-            insufficient("境內基金沒有開放的投資區域資料" if r["market"] == "domestic" else "開放資料沒有這檔的區域欄位"),
+            insufficient("境內基本資料還沒有這個級別" if r["market"] == "domestic" else "開放資料沒有這檔的區域欄位"),
             "基金的錢主要投到哪些國家或地區。", src if r["region"] else ""),
         row("風險等級", e(r["risk"]) if r["risk"] else
             insufficient("境內基金沒有開放的風險等級資料" if r["market"] == "domestic" else "開放資料沒有這檔的基本資料"),
@@ -337,6 +381,25 @@ def fund_page(r: dict, by_id: dict) -> str:
     if r["market"] == "offshore" and r.get("fund_aum_m") is not None:
         rows.append(row("基金規模", f'{num(r["fund_aum_m"], 2)} 百萬 {e(r.get("fund_aum_currency") or "")}',
                         "整檔基金（所有級別合計）管理多少錢。", f"資料日期 {r.get('fund_aum_date')}｜{src}"))
+    if r["market"] == "domestic" and r.get("fund_aum") is not None:
+        rows.append(row("基金規模", f'{num(r["fund_aum"] / 1e6, 2)} 百萬 {e(r.get("aum_currency") or "")}',
+                        "整檔基金（所有級別合計）管理多少錢。", f"資料日期 {r.get('aum_date')}｜{src}"))
+    if r["market"] == "domestic" and r.get("div_policy"):
+        rows.append(row("配息規定", e(r["div_policy"]), "基金公司規定這個級別要不要配息、多久配一次。",
+                        f"資料月份 {r.get('basic_month')}｜{src}"))
+    if r["market"] == "domestic":
+        f = r.get("fee")
+        if f and f.get("total_pct") is not None:
+            items = [("經理費", "mgmt_pct"), ("保管費", "custody_pct"), ("買賣手續費", "trade_pct"),
+                     ("交易稅", "tax_pct"), ("保證費", "guarantee_pct"), ("其他", "other_pct")]
+            detail = "、".join(f"{lbl} {f[k]:.3f}%" for lbl, k in items if f.get(k))
+            rows.append(row(f"{f['month']} 單月費用", f"<b>{f['total_pct']:.3f}%</b>" + (f"（{e(detail)}）" if detail else ""),
+                            "這個月從基金資產扣掉的費用，占基金淨資產的比例。這是單月數字、整檔基金合計，"
+                            "已經反映在淨值裡，不是另外向你收的錢。",
+                            f"資料月份 {f['month']}｜{src}"))
+        else:
+            rows.append(row("費用", insufficient("開放資料沒有這檔的費用資料"),
+                            "基金每月從資產扣掉的經理費、保管費等。"))
     parts.append('<section><h2>基本資料</h2>' + "".join(rows) + "</section>")
 
     # 走勢與風險
@@ -346,6 +409,8 @@ def fund_page(r: dict, by_id: dict) -> str:
         v = r[f"ret_{y}y"]
         if not r["tr_available"]:
             val = insufficient("境內配息型級別沒有開放的配息資料，無法計算含息報酬")
+        elif v is None and r.get("tr_end"):
+            val = insufficient(f"境內配息資料目前只公布到 {r['tr_end']}，含息報酬只能算到這天；{hist}")
         elif v is None:
             val = insufficient(f"需要至少 {y} 年的淨值資料；{hist}")
         else:
@@ -374,7 +439,9 @@ def fund_page(r: dict, by_id: dict) -> str:
             f"<td>{pv(x['pct_principal'])}</td><td>{pv(x['pct_income'])}</td></tr>"
             for x in d["recent"])
         principal_line = (f"有標示來源的 {d['n_with_source']} 次配息中，{d['n_principal']} 次有部分來自本金。"
-                          if d["n_with_source"] else "配息來源：資料不足（官方資料未標示）。")
+                          if d["n_with_source"] else
+                          "配息來源：資料不足（境內基金的開放資料沒有標示本金或收益組成）。"
+                          if r["market"] == "domestic" else "配息來源：資料不足（官方資料未標示）。")
         body = [
             f"<p>本站資料期間（除息日 {d['first_ex']} 到 {d['last_ex']}）共配息 {d['n']} 次，"
             f"每單位合計 {num(d['sum'], 6)} {e(r['currency'])}，約為目前淨值的 {pct(d['sum_pct_of_nav'], 2, False)}。</p>",
@@ -383,14 +450,15 @@ def fund_page(r: dict, by_id: dict) -> str:
             "不是基金賺來的。配息金額看起來高，不代表有賺錢；要看「含息報酬」才知道。</p>",
             '<table class="tbl"><thead><tr><th>除息日</th><th>每單位配息</th><th>來自本金</th>'
             f"<th>來自可分配收益</th></tr></thead><tbody>{recent}</tbody></table>",
-            f'<p class="meta">最近 {len(d["recent"])} 次｜{SRC_OFF}</p>',
+            f'<p class="meta">最近 {len(d["recent"])} 次｜{SRC_OFF if r["market"] == "offshore" else SRC_DOM}</p>',
         ]
         if r["ret_1y"] is None:
             body.append(f"<p>配息率和含息報酬對照：{insufficient('含息報酬需要至少 1 年的淨值資料')}</p>")
         parts.append('<section><h2>配息真相</h2>' + "".join(body) + "</section>")
-    elif r["div_name"] and r["market"] == "domestic":
-        parts.append('<section><h2>配息真相</h2><p>' + insufficient(
-            "境內基金的配息紀錄沒有開放授權的資料來源，本站無法顯示配息金額與來源") + "</p></section>")
+    elif r["market"] == "domestic" and r.get("distributes"):
+        why = (f"本站的境內配息資料（除息日到 {data_cover(by_id)}）沒有這個級別的配息紀錄"
+               if data_cover(by_id) else "本站目前沒有境內配息資料")
+        parts.append('<section><h2>配息真相</h2><p>' + insufficient(why) + "</p></section>")
 
     # 持股
     parts.append('<section><h2>買了哪些公司</h2><p>' + insufficient(
@@ -417,6 +485,10 @@ def fund_page(r: dict, by_id: dict) -> str:
                 full_title=f"{name}｜淨值、配息與風險白話說明｜基金白話通")
 
 
+def data_cover(by_id: dict) -> str | None:
+    return by_id.get("_div_cover_dom")
+
+
 # ---------------------------------------------------------------- 匯出
 
 def index_entry(r: dict) -> list:
@@ -430,7 +502,7 @@ def index_entry(r: dict) -> list:
 def fund_json(r: dict) -> dict:
     keep = ["id", "name", "market", "currency", "hedged", "type", "region", "risk", "company",
             "latest_nav", "latest_date", "first_date", "n_nav", "ret_1y", "ret_3y", "ret_5y", "vol",
-            "mdd", "tr_available", "source", "base"]
+            "mdd", "tr_available", "tr_end", "source", "base"]
     out = {k: r.get(k) for k in keep}
     out["nav"] = r["_navs"]
     s = r["_series"]
@@ -452,6 +524,7 @@ def build_site(curated: pathlib.Path, out: pathlib.Path, generated_at: str | Non
         recs.append(r)
     link_names(recs)
     by_id = {r["id"]: r for r in recs}
+    by_id["_div_cover_dom"] = data["div_cover_dom"]
 
     if out.exists():
         shutil.rmtree(out)
@@ -504,7 +577,8 @@ def build_site(curated: pathlib.Path, out: pathlib.Path, generated_at: str | Non
 # ---------------------------------------------------------------- 配息真相、sitemap
 
 def dividend_stats(recs: list[dict], data: dict) -> tuple[dict, list[list]]:
-    allrows = [d for ds in data["divs"].values() for d in ds]
+    # 這一頁講「配息組成」，只有境外資料有標示，所以只統計境外
+    allrows = [d for k, ds in data["divs"].items() if k.startswith("o-") for d in ds]
     withp = [d for d in allrows if d["pct_principal"] is not None]
     buckets = [("0%（完全沒有用到本金）", lambda x: x == 0), ("1%～25%", lambda x: 0 < x <= 25),
                ("26%～50%", lambda x: 25 < x <= 50), ("51%～75%", lambda x: 50 < x <= 75),
@@ -513,7 +587,7 @@ def dividend_stats(recs: list[dict], data: dict) -> tuple[dict, list[list]]:
         "records": len(allrows), "with_source": len(withp), "no_source": len(allrows) - len(withp),
         "principal_any": sum(1 for d in withp if d["pct_principal"] > 0),
         "buckets": [[label, sum(1 for d in withp if f(d["pct_principal"]))] for label, f in buckets],
-        "classes": sum(1 for r in recs if r["div"]),
+        "classes": sum(1 for r in recs if r["div"] and r["market"] == "offshore"),
         "classes_any_principal": sum(1 for r in recs if r["div"] and r["div"]["n_principal"]),
         "first_ex": min((d["ex_date"] for d in allrows), default=None),
         "last_ex": max((d["ex_date"] for d in allrows), default=None),
@@ -521,7 +595,7 @@ def dividend_stats(recs: list[dict], data: dict) -> tuple[dict, list[list]]:
     rows = []
     for r in recs:
         d = r["div"]
-        if not d:
+        if not d or r["market"] != "offshore":
             continue
         last = d["recent"][0]
         rows.append([r["id"], r["name"], r["currency"], d["n"], d["n_with_source"], d["n_principal"],

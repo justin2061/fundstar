@@ -54,7 +54,7 @@ jobs:
           TAG="raw-$(date +%Y-%m)"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
             --title "$TAG 原始檔" \
-            --notes "每日原始檔備份。來源：臺灣集中保管結算所、金融監督管理委員會證券期貨局。授權：政府資料開放授權條款-第1版 https://data.gov.tw/license"
+            --notes "每日原始檔備份。來源：臺灣集中保管結算所、金融監督管理委員會證券期貨局（含投信投顧公會提供之資料集）。授權：政府資料開放授權條款-第1版 https://data.gov.tw/license"
           mkdir -p /tmp/raw
           find data/raw -name '*.gz' | while read -r f; do
             n="$(echo "${f#data/raw/}" | tr '/' '_')"
